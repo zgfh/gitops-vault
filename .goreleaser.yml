@@ -69,3 +69,19 @@ docker_manifests:
     image_templates:
       - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-amd64"
       - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-arm64"
+
+brews:
+  - name: gitops-vault
+    repository:
+      owner: zgfh
+      name: gitops-vault
+      branch: homebrew
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/zgfh/gitops-vault"
+    description: "GitOps secret desensitization tool"
+    license: "MIT"
+    install: |
+      bin.install "gitops-vault"
+    test: |
+      system "#{bin}/gitops-vault", "--version"

@@ -21,7 +21,8 @@ data:                                      data:
 ### 安装
 
 ```bash
-brew install zgfh/tap/gitops-vault
+brew tap zgfh/gitops-vault https://github.com/zgfh/gitops-vault
+brew install gitops-vault
 
 # 或直接下载二进制
 # https://github.com/zgfh/gitops-vault/releases
