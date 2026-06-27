@@ -1,0 +1,114 @@
+name: Dev Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Get short SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build -ldflags="-s -w" -o gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }} .
+          if [ "$GOOS" = "windows" ]; then
+            mv gitops-vault-$GOOS-$GOARCH gitops-vault-$GOOS-$GOARCH.exe
+          fi
+
+      - name: Package
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            tar czf gitops-vault_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+          else
+            tar czf gitops-vault_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: gitops-vault_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+
+  release:
+    name: Create Dev Release
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Checksums
+        run: cd dist && sha256sum *.tar.gz > checksums_dev.txt
+
+      - name: Create Dev Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "dev-${{ env.SHORT_SHA }}"
+          tag_name: "dev-${{ env.SHORT_SHA }}"
+          prerelease: true
+          files: dist/*
+          generate_release_notes: true
+
+  docker:
+    name: Build & Push Dev Image
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/zzg/gitops-vault:dev
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
