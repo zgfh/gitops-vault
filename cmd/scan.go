@@ -21,8 +21,9 @@ func init() {
 }
 
 var scanCmd = &cobra.Command{
-	Use:   "scan [file|dir...]",
-	Short: "Scan for sensitive values without modifying files",
+	Use:     "scan [file|dir...]",
+	Aliases: []string{"s"},
+	Short:   "Scan for sensitive values without modifying files",
 	Long: `Scan YAML files and report sensitive values that would be encrypted.
 This is a dry-run that does not modify any files.`,
 	Args: cobra.MinimumNArgs(1),

@@ -1,78 +1,101 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/zzg/gitops-vault/pkg/config"
 	"github.com/zzg/gitops-vault/pkg/placeholder"
 	"github.com/zzg/gitops-vault/pkg/vault"
 )
 
 var (
-	evPublicKey string
-	evSecretDir string
-	evKeyName   string
+	encryptValuePublicKey string
+	encryptValueSecretDir string
+	encryptValueKeyHint   string
+	encryptValueDryRun    bool
 )
 
 func init() {
-	encryptValueCmd.Flags().StringVarP(&evPublicKey, "public-key", "k", "", "age public key (or use config/VAULT_PUBLIC_KEY)")
-	encryptValueCmd.Flags().StringVarP(&evSecretDir, "secret-dir", "d", "", "directory to store encrypted secrets (default from config or .vault)")
-	encryptValueCmd.Flags().StringVarP(&evKeyName, "key", "n", "", "key name for the placeholder (e.g., db_password)")
-	encryptValueCmd.MarkFlagRequired("key")
-	rootCmd.AddCommand(encryptValueCmd)
+	cmd := encryptValueCmd
+	cmd.Flags().StringVarP(&encryptValuePublicKey, "public-key", "k", "", "age public key (or set VAULT_PUBLIC_KEY env)")
+	cmd.Flags().StringVarP(&encryptValueSecretDir, "secret-dir", "d", ".vault", "directory to store encrypted secrets")
+	cmd.Flags().StringVarP(&encryptValueKeyHint, "key-hint", "n", "VALUE", "hint for placeholder key name (e.g., db_password)")
+	cmd.Flags().BoolVar(&encryptValueDryRun, "dry-run", false, "show what would be done without writing")
+	rootCmd.AddCommand(cmd)
 }
 
 var encryptValueCmd = &cobra.Command{
-	Use:   "encrypt-value VALUE",
-	Short: "Encrypt a single value and print its placeholder key",
-	Long: `Encrypt a single value and store it in the vault. Returns the placeholder
-that you can manually paste into your YAML file.
+	Use:     "encrypt-value [value]",
+	Aliases: []string{"ev"},
+	Short:   "Encrypt a single value and store in .vault/",
+	Long: `Encrypt a single literal value and store it in the .vault/ directory.
+
+The value can be provided as a positional argument or piped via stdin.
+Outputs the generated placeholder string to stdout.
 
 Examples:
-
-  gitops-vault encrypt-value --key db_password "mysecret123"
-  echo "mysecret123" | xargs gitops-vault encrypt-value --key db_password`,
-	Args: cobra.ExactArgs(1),
+  gitops-vault ev --key-hint db_password "mysecret123"
+  echo "mysecret123" | gitops-vault encrypt-value --key-hint db_password`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runEncryptValue,
 }
 
 func runEncryptValue(cmd *cobra.Command, args []string) error {
-	value := args[0]
-
-	cfg, _ := config.Load()
-
-	pubKeySource := evPublicKey
-	if !cmd.Flags().Changed("public-key") && cfg.PublicKey != "" {
-		pubKeySource = cfg.PublicKey
+	// Read value from arg or stdin
+	var value string
+	if len(args) > 0 {
+		value = args[0]
+	} else {
+		reader := bufio.NewReader(os.Stdin)
+		var lines []string
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil && err != io.EOF {
+				return fmt.Errorf("read stdin: %w", err)
+			}
+			lines = append(lines, line)
+			if err == io.EOF {
+				break
+			}
+		}
+		value = strings.TrimRight(strings.Join(lines, ""), "\n")
 	}
-	pubKey, err := vault.LoadPublicKey(pubKeySource)
+
+	if value == "" {
+		return fmt.Errorf("no value provided: pass as argument or pipe via stdin")
+	}
+
+	pubKey, err := vault.LoadPublicKey(encryptValuePublicKey)
 	if err != nil {
 		return fmt.Errorf("load public key: %w", err)
 	}
 
-	secretDir := evSecretDir
-	if !cmd.Flags().Changed("secret-dir") && cfg.SecretDir != "" {
-		secretDir = cfg.SecretDir
-	}
-	if secretDir == "" {
-		secretDir = ".vault"
+	store := vault.NewStore(encryptValueSecretDir)
+	ph := placeholder.Generate(encryptValueKeyHint)
+
+	fmt.Fprintf(os.Stderr, "Key hint: %s\n", encryptValueKeyHint)
+	fmt.Fprintf(os.Stderr, "Placeholder: %s\n", ph)
+
+	if encryptValueDryRun {
+		fmt.Println(ph)
+		return nil
 	}
 
-	ph := placeholder.Generate(evKeyName)
 	encrypted, err := vault.Encrypt(value, pubKey)
 	if err != nil {
 		return fmt.Errorf("encrypt: %w", err)
 	}
 
-	store := vault.NewStore(secretDir)
 	if err := store.Put(ph, encrypted); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Stored in %s/%s\n", secretDir, ph)
+	fmt.Fprintf(os.Stderr, "Stored in %s/%s\n", encryptValueSecretDir, ph)
 	fmt.Println(ph)
 	return nil
 }

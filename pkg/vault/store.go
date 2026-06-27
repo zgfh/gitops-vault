@@ -48,6 +48,13 @@ func (s *Store) Get(placeholder string) (string, error) {
 	return enc, nil
 }
 
+// Has checks whether a placeholder exists in the vault.
+func (s *Store) Has(placeholder string) bool {
+	path := filepath.Join(s.Dir, placeholder)
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // All returns all placeholder names stored in the vault.
 func (s *Store) All() ([]string, error) {
 	entries, err := os.ReadDir(s.Dir)

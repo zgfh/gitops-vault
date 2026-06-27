@@ -32,8 +32,9 @@ func init() {
 }
 
 var encryptCmd = &cobra.Command{
-	Use:   "encrypt [file|dir...]",
-	Short: "Encrypt sensitive values and replace with placeholders",
+	Use:     "encrypt [file|dir...]",
+	Aliases: []string{"e"},
+	Short:   "Encrypt sensitive values and replace with placeholders",
 	Args:  cobra.MinimumNArgs(1),
 	RunE:  runEncrypt,
 }

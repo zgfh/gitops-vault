@@ -28,8 +28,9 @@ func init() {
 }
 
 var decryptCmd = &cobra.Command{
-	Use:   "decrypt [file|dir...]",
-	Short: "Decrypt and restore placeholders to original values",
+	Use:     "decrypt [file|dir...]",
+	Aliases: []string{"d"},
+	Short:   "Decrypt and restore placeholders to original values",
 	Args:  cobra.MinimumNArgs(1),
 	RunE:  runDecrypt,
 }
