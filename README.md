@@ -28,18 +28,22 @@ brew install zzg/tap/gitops-vault
 # https://github.com/zzg/gitops-vault/releases
 ```
 
-### 生成密钥对
+### 初始化（推荐）
 
 ```bash
-# 用 age 生成密钥对
-age-keygen -o ~/.age/key.txt
-# 公钥会自动保存，用于加密
+# 一键初始化：生成密钥对 + 创建配置文件
+gitops-vault init --generate-key
 ```
+
+执行后会自动生成：
+- `.gitops-vault.yml` — 项目配置（可提交到 Git）
+- `~/.age/vault.pub` — 公钥（可提交到 Git）
+- `~/.age/key.txt` — 私钥（**绝不能提交！**）
 
 ### 加密
 
 ```bash
-# 扫描当前目录所有 YAML 文件，自动检测并加密敏感值
+# 无需任何参数，自动读取配置中的公钥
 gitops-vault encrypt ./manifests
 
 # 试运行：只看看有哪些敏感值，不做修改
@@ -51,10 +55,14 @@ gitops-vault scan ./manifests
 ### 解密（部署时）
 
 ```bash
+# 设置私钥环境变量
+export AGE_KEY="$(cat ~/.age/key.txt)"
+
+# 解密还原
 gitops-vault decrypt ./manifests
 ```
 
-解密只需设置 `AGE_KEY` 环境变量即可。
+解密只需设置 `AGE_KEY` 环境变量即可，无需其他配置。
 
 ## 原理
 
@@ -72,13 +80,55 @@ gitops-vault decrypt ./manifests
 
 | 命令 | 作用 |
 |------|------|
+| `gitops-vault init` | 一键初始化：生成密钥 + 配置文件 |
 | `gitops-vault encrypt [path]` | 加密敏感值，原地替换为占位符 |
 | `gitops-vault decrypt [path]` | 将占位符恢复为原始值 |
 | `gitops-vault scan [path]` | 只报告，不做修改 |
+| `gitops-vault encrypt-value --key NAME VAL` | 加密单个值，输出占位符（手动粘贴到 YAML） |
+
+### 手动加密单个值
+
+不想全自动扫描？手动加密一个值，拿到占位符后自己粘贴到 YAML：
+
+```bash
+$ gitops-vault encrypt-value --key db_password "my-secret-password"
+VAULT_DB_PASSWORD_1750000000
+
+# 然后手动编辑 YAML：
+# password: VAULT_DB_PASSWORD_1750000000
+```
+
+## 配置
+
+### .gitops-vault.yml
+
+```yaml
+# 公钥（值或文件路径），init --generate-key 会自动填充
+public_key: "age1..."
+
+# 私钥（值或文件路径），仅解密时需要
+# 注意：不要将此文件提交到 Git！
+private_key: "AGE-SECRET-KEY-1..."
+
+# 密文存储目录，默认 .vault
+secret_dir: ".vault"
+
+# 额外的敏感字段名（内置默认已覆盖常见字段）
+sensitive_keys:
+  - db_url
+  - connection_string
+
+# 跳过扫描的目录
+exclude:
+  - "vendor/"
+  - "node_modules/"
+```
+
+配置文件从当前目录向上查找（类似 `.gitignore` 的发现机制），命令行参数优先级高于配置文件。
 
 ## 为什么选择 gitops-vault？
 
-- **零配置**：默认规则已覆盖 90% 的场景
+- **一键初始化**：`gitops-vault init --generate-key` 三秒搞定全部配置
 - **安全可靠**：age 加密，密钥永不出现在明文中
 - **Git 友好**：加密后的文件 diff 清晰可读
 - **CI/CD 就绪**：解密只需一行命令，集成到部署流程只需 3 分钟

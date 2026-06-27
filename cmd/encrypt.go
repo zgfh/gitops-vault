@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/zzg/gitops-vault/pkg/config"
 	"github.com/zzg/gitops-vault/pkg/placeholder"
 	"github.com/zzg/gitops-vault/pkg/scanner"
 	"github.com/zzg/gitops-vault/pkg/vault"
@@ -38,12 +39,30 @@ var encryptCmd = &cobra.Command{
 }
 
 func runEncrypt(cmd *cobra.Command, args []string) error {
-	pubKey, err := vault.LoadPublicKey(encryptPublicKey)
+	cfg, _ := config.Load()
+
+	pubKeySource := encryptPublicKey
+	if !cmd.Flags().Changed("public-key") && cfg.PublicKey != "" {
+		pubKeySource = cfg.PublicKey
+	}
+	pubKey, err := vault.LoadPublicKey(pubKeySource)
 	if err != nil {
 		return fmt.Errorf("load public key: %w", err)
 	}
 
-	files, err := scanner.WalkYAML(args)
+	secretDir := encryptSecretDir
+	if !cmd.Flags().Changed("secret-dir") && cfg.SecretDir != "" {
+		secretDir = cfg.SecretDir
+	}
+
+	sensitiveKeys := encryptSensitiveKeys
+	if !cmd.Flags().Changed("sensitive-key") && len(cfg.SensitiveKeys) > 0 {
+		sensitiveKeys = cfg.SensitiveKeys
+	}
+
+	excludePatterns := cfg.Exclude
+
+	files, err := scanner.WalkYAML(args, excludePatterns)
 	if err != nil {
 		return fmt.Errorf("walk paths: %w", err)
 	}
@@ -52,7 +71,7 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	store := vault.NewStore(encryptSecretDir)
+	store := vault.NewStore(secretDir)
 	total := 0
 
 	for _, file := range files {
@@ -66,7 +85,7 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("parse %s: %w", file, err)
 		}
 
-		count := processEncrypt(&doc, pubKey, store)
+		count := processEncrypt(&doc, pubKey, store, sensitiveKeys)
 		if count > 0 {
 			fmt.Printf("%s: %d value(s) encrypted\n", file, count)
 
@@ -89,21 +108,21 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 	if total == 0 {
 		fmt.Println("No sensitive values found.")
 	} else {
-		fmt.Printf("\nTotal: %d value(s) encrypted into %s/\n", total, encryptSecretDir)
+		fmt.Printf("\nTotal: %d value(s) encrypted into %s/\n", total, secretDir)
 	}
 	return nil
 }
 
 // processEncrypt walks the YAML tree and replaces sensitive values with placeholders.
 // Returns the number of replacements made.
-func processEncrypt(doc *yaml.Node, pubKey string, store *vault.Store) int {
+func processEncrypt(doc *yaml.Node, pubKey string, store *vault.Store, sensitiveKeys []string) int {
 	count := 0
 
 	yamledit.Walk(doc, func(node *yaml.Node, path []string, value string) *scanner.Finding {
 		keyName := path[len(path)-1]
 
 		// 1. YAML key-value: key name contains sensitive keyword
-		if scanner.KeyContainsSensitive(keyName, encryptSensitiveKeys) {
+		if scanner.KeyContainsSensitive(keyName, sensitiveKeys) {
 			ph := placeholder.Generate(yamledit.KeyFromPath(path))
 			encrypted, err := vault.Encrypt(value, pubKey)
 			if err != nil {
@@ -173,7 +192,7 @@ func processEncrypt(doc *yaml.Node, pubKey string, store *vault.Store) int {
 				}
 				ekey := result[m[2]:m[3]]
 				eval := result[m[4]:m[5]]
-				if scanner.KeyContainsSensitive(ekey, encryptSensitiveKeys) {
+				if scanner.KeyContainsSensitive(ekey, sensitiveKeys) {
 					ph := placeholder.Generate(ekey)
 					encrypted, err := vault.Encrypt(eval, pubKey)
 					if err != nil {

@@ -28,7 +28,8 @@ type Finding struct {
 }
 
 // WalkYAML walks the given paths and returns all YAML files found.
-func WalkYAML(paths []string) ([]string, error) {
+// excludePatterns are simple glob patterns for paths to skip (e.g., "vendor/").
+func WalkYAML(paths []string, excludePatterns []string) ([]string, error) {
 	var files []string
 	for _, p := range paths {
 		info, err := os.Stat(p)
@@ -44,6 +45,11 @@ func WalkYAML(paths []string) ([]string, error) {
 					base := filepath.Base(path)
 					if strings.HasPrefix(base, ".") && base != "." {
 						return filepath.SkipDir
+					}
+					for _, ex := range excludePatterns {
+						if matched, _ := filepath.Match(ex, base); matched {
+							return filepath.SkipDir
+						}
 					}
 					return nil
 				}

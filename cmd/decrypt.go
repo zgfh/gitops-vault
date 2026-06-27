@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/zzg/gitops-vault/pkg/config"
 	"github.com/zzg/gitops-vault/pkg/placeholder"
 	"github.com/zzg/gitops-vault/pkg/scanner"
 	"github.com/zzg/gitops-vault/pkg/vault"
@@ -34,12 +35,23 @@ var decryptCmd = &cobra.Command{
 }
 
 func runDecrypt(cmd *cobra.Command, args []string) error {
-	privKey, err := vault.LoadPrivateKey(decryptPrivateKey)
+	cfg, _ := config.Load()
+
+	privKeySource := decryptPrivateKey
+	if !cmd.Flags().Changed("private-key") && cfg.PrivateKey != "" {
+		privKeySource = cfg.PrivateKey
+	}
+	privKey, err := vault.LoadPrivateKey(privKeySource)
 	if err != nil {
 		return fmt.Errorf("load private key: %w", err)
 	}
 
-	files, err := scanner.WalkYAML(args)
+	secretDir := decryptSecretDir
+	if !cmd.Flags().Changed("secret-dir") && cfg.SecretDir != "" {
+		secretDir = cfg.SecretDir
+	}
+
+	files, err := scanner.WalkYAML(args, cfg.Exclude)
 	if err != nil {
 		return fmt.Errorf("walk paths: %w", err)
 	}
@@ -48,7 +60,7 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	store := vault.NewStore(decryptSecretDir)
+	store := vault.NewStore(secretDir)
 	total := 0
 
 	for _, file := range files {
@@ -83,7 +95,7 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 	if total == 0 {
 		fmt.Println("No placeholders found.")
 	} else {
-		fmt.Printf("\nTotal: %d value(s) decrypted from %s/\n", total, decryptSecretDir)
+		fmt.Printf("\nTotal: %d value(s) decrypted from %s/\n", total, secretDir)
 	}
 	return nil
 }

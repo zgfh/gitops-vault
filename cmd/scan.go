@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/zzg/gitops-vault/pkg/config"
 	"github.com/zzg/gitops-vault/pkg/scanner"
 	"github.com/zzg/gitops-vault/pkg/yamledit"
 )
@@ -29,7 +30,14 @@ This is a dry-run that does not modify any files.`,
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
-	files, err := scanner.WalkYAML(args)
+	cfg, _ := config.Load()
+
+	sensitiveKeys := scanSensitiveKeys
+	if !cmd.Flags().Changed("sensitive-key") && len(cfg.SensitiveKeys) > 0 {
+		sensitiveKeys = cfg.SensitiveKeys
+	}
+
+	files, err := scanner.WalkYAML(args, cfg.Exclude)
 	if err != nil {
 		return fmt.Errorf("walk paths: %w", err)
 	}
@@ -56,7 +64,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		findings := yamledit.Walk(&doc, func(node *yaml.Node, path []string, value string) *scanner.Finding {
 			keyName := path[len(path)-1]
 
-			if scanner.KeyContainsSensitive(keyName, scanSensitiveKeys) {
+			if scanner.KeyContainsSensitive(keyName, sensitiveKeys) {
 				return &scanner.Finding{
 					YAMLPath:   strings.Join(path, "."),
 					Value:      value,
@@ -79,7 +87,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 				!strings.HasPrefix(value, "--") && len(value) > 10 {
 				match := scanner.EmbeddedKeyValueRE.FindAllStringSubmatch(value, -1)
 				for _, m := range match {
-					if len(m) >= 3 && scanner.KeyContainsSensitive(m[1], scanSensitiveKeys) {
+					if len(m) >= 3 && scanner.KeyContainsSensitive(m[1], sensitiveKeys) {
 						return &scanner.Finding{
 							YAMLPath:   strings.Join(path, "."),
 							Value:      fmt.Sprintf("%s = %s", m[1], m[2]),
