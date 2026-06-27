@@ -111,6 +111,6 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/zzg/gitops-vault:dev,ghcr.io/zzg/gitops-vault:dev-${{ env.SHORT_SHA }}
+          tags: ghcr.io/zgfh/gitops-vault:dev,ghcr.io/zgfh/gitops-vault:dev-${{ env.SHORT_SHA }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}

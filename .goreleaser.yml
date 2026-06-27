@@ -34,7 +34,7 @@ sboms:
 
 dockers:
   - image_templates:
-      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-amd64"
+      - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-amd64"
     goos: linux
     goarch: amd64
     use: buildx
@@ -47,7 +47,7 @@ dockers:
       - "--label=org.opencontainers.image.created={{ .Date }}"
 
   - image_templates:
-      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-arm64"
+      - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-arm64"
     goos: linux
     goarch: arm64
     use: buildx
@@ -60,12 +60,12 @@ dockers:
       - "--label=org.opencontainers.image.created={{ .Date }}"
 
 docker_manifests:
-  - name_template: "ghcr.io/zzg/gitops-vault:{{ .Version }}"
+  - name_template: "ghcr.io/zgfh/gitops-vault:{{ .Version }}"
     image_templates:
-      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-amd64"
-      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-arm64"
+      - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-amd64"
+      - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-arm64"
 
-  - name_template: "ghcr.io/zzg/gitops-vault:latest"
+  - name_template: "ghcr.io/zgfh/gitops-vault:latest"
     image_templates:
-      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-amd64"
-      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-arm64"
+      - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-amd64"
+      - "ghcr.io/zgfh/gitops-vault:{{ .Version }}-arm64"
