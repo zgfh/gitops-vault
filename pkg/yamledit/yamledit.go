@@ -83,15 +83,15 @@ func MarshalNode(doc *yaml.Node) ([]byte, error) {
 }
 
 // preserveStyles ensures that scalar nodes with multi-line values
-// keep their LiteralStyle or FoldedStyle for proper block scalar output.
+// use block scalar style (|) for proper YAML output, regardless of
+// the current Style (which may be DoubleQuotedStyle if the value was
+// previously a single-line placeholder in quotes).
 func preserveStyles(node *yaml.Node) {
 	if node == nil {
 		return
 	}
 	if node.Kind == yaml.ScalarNode && strings.Contains(node.Value, "\n") {
-		if node.Style == 0 {
-			node.Style = yaml.LiteralStyle
-		}
+		node.Style = yaml.LiteralStyle
 	}
 	for _, child := range node.Content {
 		preserveStyles(child)

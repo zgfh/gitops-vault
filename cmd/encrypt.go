@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -83,26 +85,50 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("read %s: %w", file, err)
 		}
 
-		var doc yaml.Node
-		if err := yaml.Unmarshal(data, &doc); err != nil {
-			return fmt.Errorf("parse %s: %w", file, err)
+		// Decode all YAML documents (support multi-document files with ---)
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		var docs []*yaml.Node
+		for {
+			var doc yaml.Node
+			if err := decoder.Decode(&doc); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("parse %s: %w", file, err)
+			}
+			docs = append(docs, &doc)
 		}
 
-		count := processEncrypt(&doc, pubKey, store, sk)
+		if len(docs) == 0 {
+			continue
+		}
+
+		fileCount := 0
+		for _, doc := range docs {
+			fileCount += processEncrypt(doc, pubKey, store, sk)
+		}
+		count := fileCount
 		if count > 0 {
 			fmt.Fprintf(os.Stderr, "%s: %d value(s) encrypted\n", file, count)
 
 			if !encryptDryRun {
-				out, err := yamledit.MarshalNode(&doc)
-				if err != nil {
-					return fmt.Errorf("marshal %s: %w", file, err)
+				var buf bytes.Buffer
+				for i, doc := range docs {
+					out, err := yamledit.MarshalNode(doc)
+					if err != nil {
+						return fmt.Errorf("marshal %s: %w", file, err)
+					}
+					if i > 0 {
+						buf.WriteString("---\n")
+					}
+					buf.Write(out)
 				}
 				if encryptWrite {
-					if err := os.WriteFile(file, out, 0644); err != nil {
+					if err := os.WriteFile(file, buf.Bytes(), 0644); err != nil {
 						return fmt.Errorf("write %s: %w", file, err)
 					}
 				} else {
-					os.Stdout.Write(out)
+					os.Stdout.Write(buf.Bytes())
 				}
 			}
 		}
