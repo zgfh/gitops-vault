@@ -1,0 +1,71 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
+    ldflags:
+      - -s -w
+    binary: gitops-vault
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+dockers:
+  - image_templates:
+      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-amd64"
+    goos: linux
+    goarch: amd64
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=GitOps secret desensitization tool"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+  - image_templates:
+      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-arm64"
+    goos: linux
+    goarch: arm64
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=GitOps secret desensitization tool"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/zzg/gitops-vault:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-amd64"
+      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/zzg/gitops-vault:latest"
+    image_templates:
+      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-amd64"
+      - "ghcr.io/zzg/gitops-vault:{{ .Version }}-arm64"
