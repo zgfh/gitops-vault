@@ -43,17 +43,19 @@ jobs:
 
       - name: Package
         run: |
+          PKG="gitops-vault_dev-${SHORT_SHA}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            tar czf gitops-vault_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+            tar czf "$PKG" gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }}.exe
           else
-            tar czf gitops-vault_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }}
+            tar czf "$PKG" gitops-vault-${{ matrix.goos }}-${{ matrix.goarch }}
           fi
+          echo "PKG=$PKG" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: gitops-vault_dev_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+          path: ${{ env.PKG }}
 
   release:
     name: Create Dev Release
@@ -72,7 +74,7 @@ jobs:
           path: dist/
 
       - name: Checksums
-        run: cd dist && sha256sum *.tar.gz > checksums_dev.txt
+        run: cd dist && sha256sum *.tar.gz > checksums_dev-${SHORT_SHA}.txt
 
       - name: Create Dev Release
         uses: softprops/action-gh-release@v2
@@ -109,6 +111,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/zzg/gitops-vault:dev
+          tags:
+            - ghcr.io/zzg/gitops-vault:dev
+            - ghcr.io/zzg/gitops-vault:dev-${{ env.SHORT_SHA }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
