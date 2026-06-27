@@ -41,28 +41,7 @@ var encryptCmd = &cobra.Command{
 func runEncrypt(cmd *cobra.Command, args []string) error {
 	cfg, _ := config.Load()
 
-	pubKeySource := encryptPublicKey
-	if !cmd.Flags().Changed("public-key") && cfg.PublicKey != "" {
-		pubKeySource = cfg.PublicKey
-	}
-	pubKey, err := vault.LoadPublicKey(pubKeySource)
-	if err != nil {
-		return fmt.Errorf("load public key: %w", err)
-	}
-
-	secretDir := encryptSecretDir
-	if !cmd.Flags().Changed("secret-dir") && cfg.SecretDir != "" {
-		secretDir = cfg.SecretDir
-	}
-
-	sensitiveKeys := encryptSensitiveKeys
-	if !cmd.Flags().Changed("sensitive-key") && len(cfg.SensitiveKeys) > 0 {
-		sensitiveKeys = cfg.SensitiveKeys
-	}
-
-	excludePatterns := cfg.Exclude
-
-	files, err := scanner.WalkYAML(args, excludePatterns)
+	files, err := scanner.WalkYAML(args, cfg.Exclude)
 	if err != nil {
 		return fmt.Errorf("walk paths: %w", err)
 	}
@@ -71,10 +50,32 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	store := vault.NewStore(secretDir)
 	total := 0
 
 	for _, file := range files {
+		// Resolve effective config: rule > global, CLI flags override all
+		fileCfg := cfg.FileConfig(file)
+
+		pk := fileCfg.PublicKey
+		if cmd.Flags().Changed("public-key") {
+			pk = encryptPublicKey
+		}
+		pubKey, err := vault.LoadPublicKey(pk)
+		if err != nil {
+			return fmt.Errorf("load public key for %s: %w", file, err)
+		}
+
+		sd := fileCfg.SecretDir
+		if cmd.Flags().Changed("secret-dir") {
+			sd = encryptSecretDir
+		}
+		store := vault.NewStore(sd)
+
+		sk := fileCfg.SensitiveKeys
+		if cmd.Flags().Changed("sensitive-key") {
+			sk = encryptSensitiveKeys
+		}
+
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", file, err)
@@ -85,7 +86,7 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("parse %s: %w", file, err)
 		}
 
-		count := processEncrypt(&doc, pubKey, store, sensitiveKeys)
+		count := processEncrypt(&doc, pubKey, store, sk)
 		if count > 0 {
 			fmt.Printf("%s: %d value(s) encrypted\n", file, count)
 
@@ -108,7 +109,7 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 	if total == 0 {
 		fmt.Println("No sensitive values found.")
 	} else {
-		fmt.Printf("\nTotal: %d value(s) encrypted into %s/\n", total, secretDir)
+		fmt.Printf("\nTotal: %d value(s) encrypted\n", total)
 	}
 	return nil
 }

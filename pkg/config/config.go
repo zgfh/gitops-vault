@@ -4,11 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
 
 const ConfigFileName = ".gitops-vault.yml"
+
+// Rule defines a per-file matching rule. First match wins.
+// Only non-zero fields override the global defaults.
+type Rule struct {
+	PathRegex     string   `yaml:"path_regex"`
+	PublicKey     string   `yaml:"public_key,omitempty"`
+	SecretDir     string   `yaml:"secret_dir,omitempty"`
+	SensitiveKeys []string `yaml:"sensitive_keys,omitempty"`
+	Exclude       []string `yaml:"exclude,omitempty"`
+
+	compiled *regexp.Regexp `yaml:"-"`
+}
 
 // Config holds all persistent settings.
 type Config struct {
@@ -17,6 +30,7 @@ type Config struct {
 	SecretDir     string   `yaml:"secret_dir"`
 	SensitiveKeys []string `yaml:"sensitive_keys"`
 	Exclude       []string `yaml:"exclude"`
+	Rules         []Rule   `yaml:"rules,omitempty"`
 }
 
 // Default returns a Config with sensible defaults including built-in sensitive key patterns.
@@ -87,7 +101,57 @@ func LoadPath(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	if err := cfg.Compile(); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// Compile pre-compiles all rule regexes. Call after loading/unmarshaling.
+func (c *Config) Compile() error {
+	for i := range c.Rules {
+		re, err := regexp.Compile(c.Rules[i].PathRegex)
+		if err != nil {
+			return fmt.Errorf("rule %d path_regex %q: %w", i, c.Rules[i].PathRegex, err)
+		}
+		c.Rules[i].compiled = re
+	}
+	return nil
+}
+
+// FileConfig returns the effective configuration for a specific file path
+// by merging the first matching rule on top of global defaults.
+func (c *Config) FileConfig(filePath string) *Config {
+	// Start with a copy of globals
+	cfg := &Config{
+		PublicKey:     c.PublicKey,
+		SecretDir:     c.SecretDir,
+		SensitiveKeys: append([]string(nil), c.SensitiveKeys...),
+		Exclude:       append([]string(nil), c.Exclude...),
+	}
+
+	for _, r := range c.Rules {
+		if r.compiled == nil {
+			continue
+		}
+		if r.compiled.MatchString(filePath) {
+			if r.PublicKey != "" {
+				cfg.PublicKey = r.PublicKey
+			}
+			if r.SecretDir != "" {
+				cfg.SecretDir = r.SecretDir
+			}
+			if len(r.SensitiveKeys) > 0 {
+				cfg.SensitiveKeys = append([]string(nil), r.SensitiveKeys...)
+			}
+			if len(r.Exclude) > 0 {
+				cfg.Exclude = append([]string(nil), r.Exclude...)
+			}
+			break // first match wins
+		}
+	}
+
+	return cfg
 }
 
 // Save writes the config to the given path.

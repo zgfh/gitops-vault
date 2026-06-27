@@ -32,11 +32,6 @@ This is a dry-run that does not modify any files.`,
 func runScan(cmd *cobra.Command, args []string) error {
 	cfg, _ := config.Load()
 
-	sensitiveKeys := scanSensitiveKeys
-	if !cmd.Flags().Changed("sensitive-key") && len(cfg.SensitiveKeys) > 0 {
-		sensitiveKeys = cfg.SensitiveKeys
-	}
-
 	files, err := scanner.WalkYAML(args, cfg.Exclude)
 	if err != nil {
 		return fmt.Errorf("walk paths: %w", err)
@@ -49,6 +44,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 	total := 0
 
 	for _, file := range files {
+		fileCfg := cfg.FileConfig(file)
+
+		sk := fileCfg.SensitiveKeys
+		if cmd.Flags().Changed("sensitive-key") {
+			sk = scanSensitiveKeys
+		}
+
 		data, err := os.ReadFile(file)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error reading %s: %v\n", file, err)
@@ -64,7 +66,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		findings := yamledit.Walk(&doc, func(node *yaml.Node, path []string, value string) *scanner.Finding {
 			keyName := path[len(path)-1]
 
-			if scanner.KeyContainsSensitive(keyName, sensitiveKeys) {
+			if scanner.KeyContainsSensitive(keyName, sk) {
 				return &scanner.Finding{
 					YAMLPath:   strings.Join(path, "."),
 					Value:      value,
@@ -87,7 +89,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 				!strings.HasPrefix(value, "--") && len(value) > 10 {
 				match := scanner.EmbeddedKeyValueRE.FindAllStringSubmatch(value, -1)
 				for _, m := range match {
-					if len(m) >= 3 && scanner.KeyContainsSensitive(m[1], sensitiveKeys) {
+					if len(m) >= 3 && scanner.KeyContainsSensitive(m[1], sk) {
 						return &scanner.Finding{
 							YAMLPath:   strings.Join(path, "."),
 							Value:      fmt.Sprintf("%s = %s", m[1], m[2]),
