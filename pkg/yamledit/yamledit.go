@@ -1,6 +1,7 @@
 package yamledit
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -65,6 +66,36 @@ func walkNode(node *yaml.Node, path []string, visitor func(node *yaml.Node, path
 // ApplyEdit replaces a node's value with the new value.
 func ApplyEdit(edit *Edit) {
 	edit.Node.Value = edit.NewValue
+}
+
+// MarshalNode marshals a yaml.Node tree to YAML bytes while preserving
+// the literal block style for values containing newlines.
+func MarshalNode(doc *yaml.Node) ([]byte, error) {
+	preserveStyles(doc)
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		return nil, err
+	}
+	enc.Close()
+	return buf.Bytes(), nil
+}
+
+// preserveStyles ensures that scalar nodes with multi-line values
+// keep their LiteralStyle or FoldedStyle for proper block scalar output.
+func preserveStyles(node *yaml.Node) {
+	if node == nil {
+		return
+	}
+	if node.Kind == yaml.ScalarNode && strings.Contains(node.Value, "\n") {
+		if node.Style == 0 {
+			node.Style = yaml.LiteralStyle
+		}
+	}
+	for _, child := range node.Content {
+		preserveStyles(child)
+	}
 }
 
 // KeyFromPath derives a meaningful key name from a YAML path for placeholder generation.

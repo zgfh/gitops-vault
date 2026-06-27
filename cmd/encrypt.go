@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -20,6 +19,7 @@ var (
 	encryptPublicKey     string
 	encryptSecretDir     string
 	encryptDryRun        bool
+	encryptWrite         bool
 	encryptSensitiveKeys []string
 )
 
@@ -27,6 +27,7 @@ func init() {
 	encryptCmd.Flags().StringVarP(&encryptPublicKey, "public-key", "k", "", "age public key (or set VAULT_PUBLIC_KEY env)")
 	encryptCmd.Flags().StringVarP(&encryptSecretDir, "secret-dir", "d", ".vault", "directory to store encrypted secrets")
 	encryptCmd.Flags().BoolVar(&encryptDryRun, "dry-run", false, "show what would be done without writing")
+	encryptCmd.Flags().BoolVarP(&encryptWrite, "write", "w", false, "modify files in place (default: output to stdout)")
 	encryptCmd.Flags().StringSliceVarP(&encryptSensitiveKeys, "sensitive-key", "s", nil, "override sensitive key patterns (default from config)")
 	rootCmd.AddCommand(encryptCmd)
 }
@@ -47,7 +48,7 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("walk paths: %w", err)
 	}
 	if len(files) == 0 {
-		fmt.Println("No YAML files found.")
+		fmt.Fprintln(os.Stderr, "No YAML files found.")
 		return nil
 	}
 
@@ -89,18 +90,19 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 
 		count := processEncrypt(&doc, pubKey, store, sk)
 		if count > 0 {
-			fmt.Printf("%s: %d value(s) encrypted\n", file, count)
+			fmt.Fprintf(os.Stderr, "%s: %d value(s) encrypted\n", file, count)
 
 			if !encryptDryRun {
-				var buf bytes.Buffer
-				enc := yaml.NewEncoder(&buf)
-				enc.SetIndent(2)
-				if err := enc.Encode(&doc); err != nil {
+				out, err := yamledit.MarshalNode(&doc)
+				if err != nil {
 					return fmt.Errorf("marshal %s: %w", file, err)
 				}
-				enc.Close()
-				if err := os.WriteFile(file, buf.Bytes(), 0644); err != nil {
-					return fmt.Errorf("write %s: %w", file, err)
+				if encryptWrite {
+					if err := os.WriteFile(file, out, 0644); err != nil {
+						return fmt.Errorf("write %s: %w", file, err)
+					}
+				} else {
+					os.Stdout.Write(out)
 				}
 			}
 		}
@@ -108,9 +110,9 @@ func runEncrypt(cmd *cobra.Command, args []string) error {
 	}
 
 	if total == 0 {
-		fmt.Println("No sensitive values found.")
+		fmt.Fprintln(os.Stderr, "No sensitive values found.")
 	} else {
-		fmt.Printf("\nTotal: %d value(s) encrypted\n", total)
+		fmt.Fprintf(os.Stderr, "\nTotal: %d value(s) encrypted\n", total)
 	}
 	return nil
 }
@@ -134,7 +136,7 @@ func processEncrypt(doc *yaml.Node, pubKey string, store *vault.Store, sensitive
 			if !encryptDryRun {
 				_ = store.Put(ph, encrypted)
 			}
-			fmt.Printf("  %s = *** -> %s\n", strings.Join(path, "."), ph)
+			fmt.Fprintf(os.Stderr, "  %s = *** -> %s\n", strings.Join(path, "."), ph)
 			node.Value = ph
 			count++
 			return nil
@@ -171,7 +173,7 @@ func processEncrypt(doc *yaml.Node, pubKey string, store *vault.Store, sensitive
 					if !encryptDryRun {
 						_ = store.Put(ph, encrypted)
 					}
-					fmt.Printf("  [ARG] %s=*** -> %s=%s\n", flag, flag, ph)
+					fmt.Fprintf(os.Stderr, "  [ARG] %s=*** -> %s=%s\n", flag, flag, ph)
 					result = result[:loc[0]] + flag + "=" + ph + result[loc[1]:]
 					count++
 				}
@@ -204,7 +206,7 @@ func processEncrypt(doc *yaml.Node, pubKey string, store *vault.Store, sensitive
 					if !encryptDryRun {
 						_ = store.Put(ph, encrypted)
 					}
-					fmt.Printf("  [EMBEDDED] %s = *** -> %s = %s\n", ekey, ekey, ph)
+					fmt.Fprintf(os.Stderr, "  [EMBEDDED] %s = *** -> %s = %s\n", ekey, ekey, ph)
 					result = result[:m[4]] + ph + result[m[5]:]
 					changed = true
 					count++
