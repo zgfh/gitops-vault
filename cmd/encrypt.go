@@ -27,7 +27,7 @@ func init() {
 	encryptCmd.Flags().StringVarP(&encryptPublicKey, "public-key", "k", "", "age public key (or set VAULT_PUBLIC_KEY env)")
 	encryptCmd.Flags().StringVarP(&encryptSecretDir, "secret-dir", "d", ".vault", "directory to store encrypted secrets")
 	encryptCmd.Flags().BoolVar(&encryptDryRun, "dry-run", false, "show what would be done without writing")
-	encryptCmd.Flags().StringSliceVarP(&encryptSensitiveKeys, "sensitive-key", "s", nil, "additional sensitive key patterns")
+	encryptCmd.Flags().StringSliceVarP(&encryptSensitiveKeys, "sensitive-key", "s", nil, "override sensitive key patterns (default from config)")
 	rootCmd.AddCommand(encryptCmd)
 }
 

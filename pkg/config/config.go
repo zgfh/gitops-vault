@@ -19,10 +19,29 @@ type Config struct {
 	Exclude       []string `yaml:"exclude"`
 }
 
-// Default returns a Config with sensible defaults.
+// Default returns a Config with sensible defaults including built-in sensitive key patterns.
 func Default() *Config {
 	return &Config{
 		SecretDir: ".vault",
+		SensitiveKeys: []string{
+			"password", "passwd", "pwd",
+			"secret", "token",
+			"api_key", "apikey", "api_secret", "apisecret",
+			"private_key", "privatekey",
+			"access_key", "accesskey",
+			"secret_key", "secretkey",
+			"db_password", "db_passwd",
+			"auth_token", "bearer_token",
+			"client_secret",
+			"encryption_key", "signing_key",
+			"credential",
+		},
+		Exclude: []string{
+			".git/",
+			".vault/",
+			"vendor/",
+			"node_modules/",
+		},
 	}
 }
 

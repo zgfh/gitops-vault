@@ -2,25 +2,9 @@ package scanner
 
 import "regexp"
 
-// DefaultSensitiveKeys are patterns considered sensitive when found in key names.
-var DefaultSensitiveKeys = []string{
-	"password", "passwd", "pwd",
-	"secret", "token",
-	"api_key", "apikey", "api_secret", "apisecret",
-	"private_key", "privatekey",
-	"access_key", "accesskey",
-	"secret_key", "secretkey",
-	"db_password", "db_passwd",
-	"auth_token", "bearer_token",
-	"client_secret",
-	"encryption_key", "signing_key",
-	"credential",
-}
-
-// KeyContainsSensitive checks if a key name contains any sensitive pattern.
-func KeyContainsSensitive(key string, extraPatterns []string) bool {
-	all := append(DefaultSensitiveKeys, extraPatterns...)
-	for _, p := range all {
+// KeyContainsSensitive checks if a key name matches any of the given sensitive patterns.
+func KeyContainsSensitive(key string, patterns []string) bool {
+	for _, p := range patterns {
 		q := regexp.QuoteMeta(p)
 		// Use (?:^|_|\\W) as left boundary so patterns match inside underscored keys like api_token
 		if matches, _ := regexp.MatchString("(?i)(?:^|_|\\W)"+q+"(?:$|_|\\W)", key); matches {

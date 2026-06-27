@@ -16,7 +16,7 @@ import (
 var scanSensitiveKeys []string
 
 func init() {
-	scanCmd.Flags().StringSliceVarP(&scanSensitiveKeys, "sensitive-key", "s", nil, "additional sensitive key patterns")
+	scanCmd.Flags().StringSliceVarP(&scanSensitiveKeys, "sensitive-key", "s", nil, "override sensitive key patterns (default from config)")
 	rootCmd.AddCommand(scanCmd)
 }
 
