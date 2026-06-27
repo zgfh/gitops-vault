@@ -21,11 +21,10 @@ data:                                      data:
 ### 安装
 
 ```bash
-# macOS / Linux
-brew install zzg/tap/gitops-vault
+brew install zgfh/tap/gitops-vault
 
 # 或直接下载二进制
-# https://github.com/zzg/gitops-vault/releases
+# https://github.com/zgfh/gitops-vault/releases
 ```
 
 ### 初始化（推荐）
