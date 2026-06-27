@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+data:
+  # This is a TOML config embedded in ConfigMap
+  frpc.toml: |
+    serverAddr = "example.com"
+    [auth]
+    method = "token"
+    token = "mysecrettokenvalue"
+    password = "mypassword"

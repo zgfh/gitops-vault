@@ -1,0 +1,12 @@
+# Binaries
+gitops-vault
+/gitops-vault
+
+# Test artifacts
+.vault/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: example/app:latest
+          args:
+            - "--db-password=mysecret123"
+            - "--api-key=sk-abcdefgh"
+            - "--normal-flag=visible"
+          env:
+            - name: DATABASE_URL
+              value: "postgres://user:mysecret@host:5432/db"
+            - name: PUBLIC_URL
+              value: "https://example.com"
