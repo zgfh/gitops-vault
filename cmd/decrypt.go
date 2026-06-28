@@ -91,13 +91,19 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		out, count := decryptDocs(docs, privKey, store)
 		if count > 0 {
 			fmt.Fprintf(os.Stderr, "%s: %d value(s) decrypted\n", file, count)
+		}
 
-			if decryptWrite {
+		if decryptWrite {
+			if count > 0 {
 				if err := os.WriteFile(file, out, 0644); err != nil {
 					return fmt.Errorf("write %s: %w", file, err)
 				}
-			} else {
+			}
+		} else {
+			if count > 0 {
 				os.Stdout.Write(out)
+			} else {
+				os.Stdout.Write(data)
 			}
 		}
 		total += count
