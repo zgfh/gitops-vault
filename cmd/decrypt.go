@@ -34,8 +34,9 @@ var decryptCmd = &cobra.Command{
 	Use:     "decrypt [file|dir...]",
 	Aliases: []string{"d"},
 	Short:   "Decrypt and restore placeholders to original values",
-	Args:  cobra.MinimumNArgs(1),
-	RunE:  runDecrypt,
+	Long:    "Decrypt YAML files containing VAULT_ placeholders, restoring original values.\n\nReads from stdin when no file arguments are given:\n  cat secret.yaml | gitops-vault d",
+	Args:    cobra.ArbitraryArgs,
+	RunE:    runDecrypt,
 }
 
 func runDecrypt(cmd *cobra.Command, args []string) error {
@@ -55,6 +56,13 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		secretDir = cfg.SecretDir
 	}
 
+	store := vault.NewStore(secretDir)
+
+	// Read from stdin when no arguments given
+	if len(args) == 0 {
+		return decryptStdin(privKey, store, secretDir)
+	}
+
 	files, err := scanner.WalkYAML(args, cfg.Exclude)
 	if err != nil {
 		return fmt.Errorf("walk paths: %w", err)
@@ -64,7 +72,6 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	store := vault.NewStore(secretDir)
 	total := 0
 
 	for _, file := range files {
@@ -73,49 +80,24 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("read %s: %w", file, err)
 		}
 
-		// Decode all YAML documents (support multi-document files with ---)
-		decoder := yaml.NewDecoder(bytes.NewReader(data))
-		var docs []*yaml.Node
-		for {
-			var doc yaml.Node
-			if err := decoder.Decode(&doc); err != nil {
-				if err == io.EOF {
-					break
-				}
-				return fmt.Errorf("parse %s: %w", file, err)
-			}
-			docs = append(docs, &doc)
+		docs, err := parseYAMLDocs(data)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", file, err)
 		}
-
 		if len(docs) == 0 {
 			continue
 		}
 
-		fileCount := 0
-		for _, doc := range docs {
-			fileCount += processDecrypt(doc, privKey, store)
-		}
-		count := fileCount
+		out, count := decryptDocs(docs, privKey, store)
 		if count > 0 {
 			fmt.Fprintf(os.Stderr, "%s: %d value(s) decrypted\n", file, count)
 
-			var buf bytes.Buffer
-			for i, doc := range docs {
-				out, err := yamledit.MarshalNode(doc)
-				if err != nil {
-					return fmt.Errorf("marshal %s: %w", file, err)
-				}
-				if i > 0 {
-					buf.WriteString("---\n")
-				}
-				buf.Write(out)
-			}
 			if decryptWrite {
-				if err := os.WriteFile(file, buf.Bytes(), 0644); err != nil {
+				if err := os.WriteFile(file, out, 0644); err != nil {
 					return fmt.Errorf("write %s: %w", file, err)
 				}
 			} else {
-				os.Stdout.Write(buf.Bytes())
+				os.Stdout.Write(out)
 			}
 		}
 		total += count
@@ -127,6 +109,78 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "\nTotal: %d value(s) decrypted from %s/\n", total, secretDir)
 	}
 	return nil
+}
+
+// decryptStdin reads YAML from stdin, decrypts placeholders, and writes to stdout.
+func decryptStdin(privKey string, store *vault.Store, secretDir string) error {
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+
+	docs, err := parseYAMLDocs(data)
+	if err != nil {
+		return fmt.Errorf("parse stdin: %w", err)
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+
+	out, count := decryptDocs(docs, privKey, store)
+	if count == 0 {
+		// No placeholders — output original input unchanged
+		os.Stdout.Write(data)
+		return nil
+	}
+
+	if decryptWrite {
+		return fmt.Errorf("--write is not supported with stdin input")
+	}
+	os.Stdout.Write(out)
+	fmt.Fprintf(os.Stderr, "%d value(s) decrypted from %s/\n", count, secretDir)
+	return nil
+}
+
+// parseYAMLDocs decodes multi-document YAML from raw bytes.
+func parseYAMLDocs(data []byte) ([]*yaml.Node, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	var docs []*yaml.Node
+	for {
+		var doc yaml.Node
+		if err := decoder.Decode(&doc); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		docs = append(docs, &doc)
+	}
+	return docs, nil
+}
+
+// decryptDocs processes all documents, returns marshaled output and count of decrypted values.
+func decryptDocs(docs []*yaml.Node, privKey string, store *vault.Store) ([]byte, int) {
+	count := 0
+	for _, doc := range docs {
+		count += processDecrypt(doc, privKey, store)
+	}
+	if count == 0 {
+		return nil, 0
+	}
+
+	var buf bytes.Buffer
+	for i, doc := range docs {
+		out, err := yamledit.MarshalNode(doc)
+		if err != nil {
+			// Skip documents that fail to marshal
+			continue
+		}
+		if i > 0 {
+			buf.WriteString("---\n")
+		}
+		buf.Write(out)
+	}
+	return buf.Bytes(), count
 }
 
 func processDecrypt(doc *yaml.Node, privKey string, store *vault.Store) int {
