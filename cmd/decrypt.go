@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -19,11 +20,13 @@ import (
 var (
 	decryptPrivateKey string
 	decryptSecretDir  string
+	decryptWrite      bool
 )
 
 func init() {
 	decryptCmd.Flags().StringVarP(&decryptPrivateKey, "private-key", "k", "", "age private key (or set AGE_KEY env)")
 	decryptCmd.Flags().StringVarP(&decryptSecretDir, "secret-dir", "d", ".vault", "directory containing encrypted secrets")
+	decryptCmd.Flags().BoolVarP(&decryptWrite, "write", "w", false, "modify files in place (default: output to stdout)")
 	rootCmd.AddCommand(decryptCmd)
 }
 
@@ -57,7 +60,7 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("walk paths: %w", err)
 	}
 	if len(files) == 0 {
-		fmt.Println("No YAML files found.")
+		fmt.Fprintln(os.Stderr, "No YAML files found.")
 		return nil
 	}
 
@@ -70,33 +73,58 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("read %s: %w", file, err)
 		}
 
-		var doc yaml.Node
-		if err := yaml.Unmarshal(data, &doc); err != nil {
-			return fmt.Errorf("parse %s: %w", file, err)
+		// Decode all YAML documents (support multi-document files with ---)
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		var docs []*yaml.Node
+		for {
+			var doc yaml.Node
+			if err := decoder.Decode(&doc); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("parse %s: %w", file, err)
+			}
+			docs = append(docs, &doc)
 		}
 
-		count := processDecrypt(&doc, privKey, store)
+		if len(docs) == 0 {
+			continue
+		}
+
+		fileCount := 0
+		for _, doc := range docs {
+			fileCount += processDecrypt(doc, privKey, store)
+		}
+		count := fileCount
 		if count > 0 {
-			fmt.Printf("%s: %d value(s) decrypted\n", file, count)
+			fmt.Fprintf(os.Stderr, "%s: %d value(s) decrypted\n", file, count)
 
 			var buf bytes.Buffer
-			enc := yaml.NewEncoder(&buf)
-			enc.SetIndent(2)
-			if err := enc.Encode(&doc); err != nil {
-				return fmt.Errorf("marshal %s: %w", file, err)
+			for i, doc := range docs {
+				out, err := yamledit.MarshalNode(doc)
+				if err != nil {
+					return fmt.Errorf("marshal %s: %w", file, err)
+				}
+				if i > 0 {
+					buf.WriteString("---\n")
+				}
+				buf.Write(out)
 			}
-			enc.Close()
-			if err := os.WriteFile(file, buf.Bytes(), 0644); err != nil {
-				return fmt.Errorf("write %s: %w", file, err)
+			if decryptWrite {
+				if err := os.WriteFile(file, buf.Bytes(), 0644); err != nil {
+					return fmt.Errorf("write %s: %w", file, err)
+				}
+			} else {
+				os.Stdout.Write(buf.Bytes())
 			}
 		}
 		total += count
 	}
 
 	if total == 0 {
-		fmt.Println("No placeholders found.")
+		fmt.Fprintln(os.Stderr, "No placeholders found.")
 	} else {
-		fmt.Printf("\nTotal: %d value(s) decrypted from %s/\n", total, secretDir)
+		fmt.Fprintf(os.Stderr, "\nTotal: %d value(s) decrypted from %s/\n", total, secretDir)
 	}
 	return nil
 }
@@ -134,7 +162,7 @@ func processDecrypt(doc *yaml.Node, privKey string, store *vault.Store) int {
 			fmt.Fprintf(os.Stderr, "  warn: %s: %v\n", ph, err)
 			return nil
 		}
-		fmt.Printf("  %s = %s -> ***\n", strings.Join(path, "."), ph)
+		fmt.Fprintf(os.Stderr, "  %s = %s -> ***\n", strings.Join(path, "."), ph)
 		node.Value = original
 		count++
 		return nil

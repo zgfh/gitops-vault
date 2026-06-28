@@ -1,0 +1,47 @@
+apiVersion: v1
+data:
+  entrypoint.sh: |-
+    #!/bin/bash
+    set -e
+    echo "start"
+    sh -x /config/update.sh
+
+    echo "init done, start crond..."
+    trap "echo stop && killall crond && exit 0" SIGTERM SIGINT
+    crond -f
+    echo "stoped..."
+  update.sh: |-
+    #!/bin/bash
+    set -e
+    acme_dir="/acme.sh"
+    acme="/usr/local/bin/acme.sh"
+
+    export DP_Key="my-secret-dp-key"
+    export QINIU_AK="my-qiniu-access-key"
+    export QINIU_SK="my-qiniu-secret-key"
+kind: ConfigMap
+metadata:
+  name: test-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deploy
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: test
+        image: nginx
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
