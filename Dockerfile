@@ -9,7 +9,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /gitops-vault .
 
-FROM gcr.io/distroless/static:nonroot
+FROM alpine:3.21
 
 COPY --from=builder /gitops-vault /gitops-vault
 
