@@ -8,7 +8,7 @@
 Git 仓库                          ArgoCD Repo Server
 ┌─────────────┐                   ┌──────────────────────────┐
 │ .vault/     │─── git pull ───▶  │  CMP Sidecar 容器         │
-│   *.age     │                   │  ┌────────────────────┐  │
+│   VAULT_*   │                   │  ┌────────────────────┐  │
 │ apps/       │                   │  │ 1. 定位 app 源码路径 │  │
 │   app1/     │                   │  │ 2. /gitops-vault    │  │
 │     secret.yaml                 │  │    decrypt -w .     │  │
@@ -186,7 +186,8 @@ spec:
 ```
 gitops-repo/
 ├── .vault/                   # 密文存储（必须在仓库根目录）
-│   └── *.age
+│   ├── VAULT_DB_PASSWORD_1750000000
+│   └── VAULT_API_KEY_1750000001
 ├── apps/
 │   ├── app1/
 │   │   └── secret.yaml       # 含占位符 VAULT_XXX_1234567890
