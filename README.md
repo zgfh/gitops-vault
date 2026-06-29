@@ -126,12 +126,17 @@ exclude:
 
 配置文件从当前目录向上查找（类似 `.gitignore` 的发现机制），命令行参数优先级高于配置文件。
 
+## ArgoCD 集成
+
+通过 ArgoCD Config Management Plugin（Sidecar）实现部署时自动解密。详见 [docs/argocd.md](docs/argocd.md)。
+
 ## 为什么选择 gitops-vault？
 
 - **一键初始化**：`gitops-vault init --generate-key` 三秒搞定全部配置
 - **安全可靠**：age 加密，密钥永不出现在明文中
 - **Git 友好**：加密后的文件 diff 清晰可读
 - **CI/CD 就绪**：解密只需一行命令，集成到部署流程只需 3 分钟
+- **ArgoCD 原生集成**：通过 CMP Sidecar 无缝嵌入 ArgoCD 部署流程
 
 ## License
 
